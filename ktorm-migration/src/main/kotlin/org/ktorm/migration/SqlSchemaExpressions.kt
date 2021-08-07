@@ -19,7 +19,6 @@ package org.ktorm.migration
 import org.ktorm.expression.*
 import org.ktorm.schema.BaseTable
 import org.ktorm.schema.SqlType
-import kotlin.reflect.KClass
 
 // Indexes
 
@@ -79,7 +78,7 @@ public data class TruncateTableExpression(
 
 public data class AlterTableAddExpression(
     val table: TableReferenceExpression,
-    val column: ColumnDeclaringExpression<*>,
+    val column: ColumnDeclarationExpression<*>,
     override val isLeafNode: Boolean = false,
     override val extraProperties: Map<String, Any> = emptyMap()
 ) : SqlExpression()
@@ -95,22 +94,23 @@ public data class AlterTableModifyColumnExpression(
     val table: TableReferenceExpression,
     val column: ColumnExpression<*>,
     val newType: SqlType<*>,
+    val notNull: Boolean = false,
     override val isLeafNode: Boolean = false,
     override val extraProperties: Map<String, Any> = emptyMap()
 ) : SqlExpression()
 
-public data class AlterTableSetColumnConstraintExpression<T : Any>(
+public data class AlterTableSetDefaultExpression<T: Any>(
     val table: TableReferenceExpression,
     val column: ColumnExpression<T>,
-    val tableConstraint: ColumnConstraintExpression<T>,
+    val default: ScalarExpression<T>,
     override val isLeafNode: Boolean = false,
     override val extraProperties: Map<String, Any> = emptyMap()
 ) : SqlExpression()
 
-public data class AlterTableDropColumnConstraintExpression(
+public data class AlterTableDropDefaultExpression(
     val table: TableReferenceExpression,
     val column: ColumnExpression<*>,
-    val type: KClass<ColumnConstraintExpression<*>>,
+    val default: ScalarExpression<out Any>? = null,
     override val isLeafNode: Boolean = false,
     override val extraProperties: Map<String, Any> = emptyMap()
 ) : SqlExpression()
@@ -135,7 +135,9 @@ public data class AlterTableDropConstraintExpression(
 public data class ColumnDeclarationExpression<T : Any>(
     val name: String,
     val sqlType: SqlType<T>,
-    val constraints: List<ColumnConstraintExpression<T>> = emptyList(),
+    val notNull: Boolean = false,
+    val default: ScalarExpression<out Any>? = null,
+    val autoIncrement: Boolean = false,
     override val isLeafNode: Boolean = false,
     override val extraProperties: Map<String, Any> = emptyMap()
 ) : SqlExpression()
@@ -165,47 +167,6 @@ public data class PrimaryKeyTableConstraintExpression(
     override val isLeafNode: Boolean = false,
     override val extraProperties: Map<String, Any> = emptyMap()
 ) : TableConstraintExpression()
-
-public abstract class ColumnConstraintExpression<in T : Any>() : SqlExpression()
-public object PrimaryKeyColumnConstraintExpression : ColumnConstraintExpression<Any>() {
-    override val isLeafNode: Boolean
-        get() = true
-    override val extraProperties: Map<String, Any>
-        get() = mapOf()
-}
-
-public object UniqueColumnConstraintExpression : ColumnConstraintExpression<Any>() {
-    override val isLeafNode: Boolean
-        get() = true
-    override val extraProperties: Map<String, Any>
-        get() = mapOf()
-}
-
-public object NotNullColumnConstraintExpression : ColumnConstraintExpression<Any>() {
-    override val isLeafNode: Boolean
-        get() = true
-    override val extraProperties: Map<String, Any>
-        get() = mapOf()
-}
-
-public data class DefaultColumnConstraintExpression<T : Any>(
-    val value: ScalarExpression<T>
-) : ColumnConstraintExpression<T>() {
-    override val isLeafNode: Boolean
-        get() = true
-    override val extraProperties: Map<String, Any>
-        get() = mapOf()
-}
-
-public data class AutoIncrementColumnConstraintExpression<T : Any>(
-    val startAt: Int = 0,
-    val increaseBy: Int = 1
-) : ColumnConstraintExpression<T>() {
-    override val isLeafNode: Boolean
-        get() = true
-    override val extraProperties: Map<String, Any>
-        get() = mapOf()
-}
 
 public data class TableReferenceExpression(
     val name: String,

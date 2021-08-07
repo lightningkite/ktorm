@@ -411,4 +411,16 @@ public abstract class BaseTable<E : Any>(
     final override fun hashCode(): Int {
         return System.identityHashCode(this)
     }
+
+    /**
+     * Used to ensure columns get registered.
+     */
+    public data class ColumnBuilder<T: Any>(val column: Column<T>)
+    public fun <T: Any> ColumnBuilder<T>.build(): Column<T> {
+        if (column.name in _columns) {
+            throw IllegalStateException("Duplicate column name: ${column.name}")
+        }
+        _columns[column.name] = column
+        return column
+    }
 }

@@ -38,9 +38,6 @@ public abstract class SqlSchemaFormatter(
 
     override fun visit(expr: SqlExpression): SqlExpression {
         return when(expr){
-            PrimaryKeyColumnConstraintExpression -> visitPrimaryKeyColumnConstraint(PrimaryKeyColumnConstraintExpression)
-            UniqueColumnConstraintExpression -> visitUniqueColumnConstraint(UniqueColumnConstraintExpression)
-            NotNullColumnConstraintExpression -> visitNotNullColumnConstraint(NotNullColumnConstraintExpression)
             is TableReferenceExpression -> visitTableReference(expr)
             is CreateTableExpression -> visitCreateTable(expr)
             is DropTableExpression -> visitDropTable(expr)
@@ -48,8 +45,8 @@ public abstract class SqlSchemaFormatter(
             is AlterTableAddExpression -> visitAlterTableAdd(expr)
             is AlterTableDropColumnExpression -> visitAlterTableDropColumn(expr)
             is AlterTableModifyColumnExpression -> visitAlterTableModifyColumn(expr)
-            is AlterTableSetColumnConstraintExpression<*> -> visitAlterTableSetColumnConstraint(expr)
-            is AlterTableDropColumnConstraintExpression -> visitAlterTableDropColumnConstraint(expr)
+            is AlterTableSetDefaultExpression<*> -> visitAlterTableSetDefault(expr)
+            is AlterTableDropDefaultExpression -> visitAlterTableDropDefault(expr)
             is AlterTableAddConstraintExpression -> visitAlterTableAddConstraint(expr)
             is AlterTableDropConstraintExpression -> visitAlterTableDropConstraint(expr)
             is CreateIndexExpression -> visitCreateIndex(expr)
@@ -57,17 +54,22 @@ public abstract class SqlSchemaFormatter(
             is CreateViewExpression -> visitCreateView(expr)
             is DropViewExpression -> visitDropView(expr)
             is ColumnDeclarationExpression<*> -> visitColumnDeclaration(expr)
-            is ForeignKeyTableConstraintExpression -> visitForeignKeyTableConstraint(expr)
-            is CheckTableConstraintExpression -> visitCheckTableConstraint(expr)
-            is UniqueTableConstraintExpression -> visitUniqueTableConstraint(expr)
-            is PrimaryKeyTableConstraintExpression -> visitPrimaryKeyTableConstraint(expr)
-            is DefaultColumnConstraintExpression<*> -> visitDefaultColumnConstraint(expr)
-            is AutoIncrementColumnConstraintExpression<*> -> visitAutoIncrementColumnConstraint(expr)
+            is TableConstraintExpression -> visitTableConstraint(expr)
             else -> super.visit(expr)
         }
     }
 
-    protected open fun visitCreateTable(expr: CreateTableExpression): SqlExpression {
+    protected open fun visitTableConstraint(expr: TableConstraintExpression): TableConstraintExpression {
+        return when(expr){
+            is ForeignKeyTableConstraintExpression -> visitForeignKeyTableConstraint(expr)
+            is CheckTableConstraintExpression -> visitCheckTableConstraint(expr)
+            is UniqueTableConstraintExpression -> visitUniqueTableConstraint(expr)
+            is PrimaryKeyTableConstraintExpression -> visitPrimaryKeyTableConstraint(expr)
+            else -> super.visit(expr) as TableConstraintExpression
+        }
+    }
+
+    protected open fun visitCreateTable(expr: CreateTableExpression): CreateTableExpression {
         writeKeyword("create table ")
         visitTableReference(expr.name)
 
@@ -89,41 +91,116 @@ public abstract class SqlSchemaFormatter(
         return expr
     }
 
-    protected open fun visitDropTable(expr: DropTableExpression): SqlExpression {
+    protected open fun visitDropTable(expr: DropTableExpression): DropTableExpression {
         writeKeyword("drop table ")
         visitTableReference(expr.table)
         return expr
     }
 
-    protected open fun visitTruncateTable(expr: TruncateTableExpression): SqlExpression {
-        writeKeyword("truncate table")
+    protected open fun visitTruncateTable(expr: TruncateTableExpression): TruncateTableExpression {
+        writeKeyword("truncate table ")
         visitTableReference(expr.table)
         return expr
     }
-    protected open fun visitAlterTableAdd(expr: AlterTableAddExpression): SqlExpression = TODO()
-    protected open fun visitAlterTableDropColumn(expr: AlterTableDropColumnExpression): SqlExpression = TODO()
-    protected open fun visitAlterTableModifyColumn(expr: AlterTableModifyColumnExpression): SqlExpression = TODO()
-    protected open fun visitAlterTableSetColumnConstraint(expr: AlterTableSetColumnConstraintExpression<*>): SqlExpression = TODO()
-    protected open fun visitAlterTableDropColumnConstraint(expr: AlterTableDropColumnConstraintExpression): SqlExpression = TODO()
-    protected open fun visitAlterTableAddConstraint(expr: AlterTableAddConstraintExpression): SqlExpression = TODO()
-    protected open fun visitAlterTableDropConstraint(expr: AlterTableDropConstraintExpression): SqlExpression = TODO()
-    protected open fun visitCreateIndex(expr: CreateIndexExpression): SqlExpression = TODO()
-    protected open fun visitDropIndex(expr: DropIndexExpression): SqlExpression = TODO()
-    protected open fun visitCreateView(expr: CreateViewExpression): SqlExpression = TODO()
-    protected open fun visitDropView(expr: DropViewExpression): SqlExpression = TODO()
-
-    protected open fun visitColumnDeclaration(expr: ColumnDeclarationExpression<*>): SqlExpression {
-        write(expr.name.quoted)
+    protected open fun visitAlterTableAdd(expr: AlterTableAddExpression): AlterTableAddExpression {
+        writeKeyword("alter table ")
+        visitTableReference(expr.table)
+        writeKeyword(" add ")
+        visitColumnDeclaration(expr.column)
+        return expr
+    }
+    protected open fun visitAlterTableDropColumn(expr: AlterTableDropColumnExpression): AlterTableDropColumnExpression {
+        writeKeyword("alter table ")
+        visitTableReference(expr.table)
+        writeKeyword(" drop column ")
+        write(expr.column.name.quoted)
+        return expr
+    }
+    protected open fun visitAlterTableModifyColumn(expr: AlterTableModifyColumnExpression): AlterTableModifyColumnExpression {
+        // TODO: This syntax is basically completely specific to the database in question.
+        writeKeyword("alter table ")
+        visitTableReference(expr.table)
+        writeKeyword(" alter column ")
+        write(expr.column.name.quoted)
         write(" ")
-        writeKeyword(expr.sqlType.typeName)
-        for(constraint in expr.constraints){
-            write(" ")
-            visit(constraint)
+        writeKeyword(expr.newType.typeName)
+        if(expr.notNull){
+            writeKeyword(" not null")
         }
         return expr
     }
-    protected open fun visitForeignKeyTableConstraint(expr: ForeignKeyTableConstraintExpression): SqlExpression {
-        writeKeyword("FOREIGN KEY (")
+    protected open fun visitAlterTableAddConstraint(expr: AlterTableAddConstraintExpression): AlterTableAddConstraintExpression {
+        writeKeyword("alter table ")
+        visitTableReference(expr.table)
+        writeKeyword(" add constraint ")
+        write(expr.constraintName)
+        write(" ")
+        visit(expr.tableConstraint)
+        return expr
+    }
+    protected open fun visitAlterTableDropConstraint(expr: AlterTableDropConstraintExpression): AlterTableDropConstraintExpression {
+        writeKeyword("alter table ")
+        visitTableReference(expr.table)
+        // TODO: MySql has a custom syntax, unfortunately, where instead of using 'constraint', you use the type of the constraint
+        writeKeyword(" drop constraint ")
+        write(expr.constraintName)
+        return expr
+    }
+    protected open fun visitCreateIndex(expr: CreateIndexExpression): CreateIndexExpression {
+        writeKeyword("create index ")
+        write(expr.name.quoted)
+        writeKeyword(" on ")
+        visitTableReference(expr.on)
+        writeKeyword(" (")
+        var first = true
+        for(col in expr.columns){
+            if(first) first = false
+            else write(", ")
+            write(col.name.quoted)
+        }
+        write(")")
+        return expr
+    }
+    protected open fun visitDropIndex(expr: DropIndexExpression): DropIndexExpression {
+        writeKeyword("drop index ")
+        write(expr.name.quoted)
+        writeKeyword(" on ")
+        visitTableReference(expr.on)
+        return expr
+    }
+    protected open fun visitCreateView(expr: CreateViewExpression): CreateViewExpression {
+        if(expr.orReplace){
+            writeKeyword("create or replace view ")
+        } else {
+            writeKeyword("create view ")
+        }
+        visitTableReference(expr.name)
+        writeKeyword(" as ")
+        visitSelect(expr.query)
+        return expr
+    }
+    protected open fun visitDropView(expr: DropViewExpression): DropViewExpression {
+        writeKeyword("drop view ")
+        visitTableReference(expr.name)
+        return expr
+    }
+
+    protected open fun visitColumnDeclaration(expr: ColumnDeclarationExpression<*>): ColumnDeclarationExpression<*> {
+        write(expr.name.quoted)
+        write(" ")
+        writeKeyword(expr.sqlType.typeName)
+        if(expr.notNull){
+            writeKeyword(" not null")
+        }
+        if(expr.default != null){
+            writeKeyword(" default ")
+            visitScalar(expr.default)
+        }
+        if(expr.autoIncrement) TODO("Auto increment is not supported by the general formatter.")
+        return expr
+    }
+    protected open fun visitForeignKeyTableConstraint(expr: ForeignKeyTableConstraintExpression): ForeignKeyTableConstraintExpression {
+        writeKeyword("foreign key (")
         val orderedEntries = expr.correspondence.entries.toList()
         var first = true
         for(col in orderedEntries){
@@ -131,7 +208,7 @@ public abstract class SqlSchemaFormatter(
             else write(", ")
             write(col.key.name.quoted)
         }
-        writeKeyword(") REFERENCES ")
+        writeKeyword(") references ")
         visitTableReference(expr.otherTable)
         write("(")
         first = true
@@ -143,27 +220,34 @@ public abstract class SqlSchemaFormatter(
         write(")")
         return expr
     }
-    protected open fun visitCheckTableConstraint(expr: CheckTableConstraintExpression): SqlExpression = TODO()
-    protected open fun visitUniqueTableConstraint(expr: UniqueTableConstraintExpression): SqlExpression = TODO()
-    protected open fun visitPrimaryKeyTableConstraint(expr: PrimaryKeyTableConstraintExpression): SqlExpression = TODO()
-    protected open fun visitPrimaryKeyColumnConstraint(expr: PrimaryKeyColumnConstraintExpression): SqlExpression {
-        writeKeyword("PRIMARY KEY")
+    protected open fun visitCheckTableConstraint(expr: CheckTableConstraintExpression): CheckTableConstraintExpression {
+        writeKeyword("check (")
+        visitScalar(expr.condition)
+        write(")")
         return expr
     }
-    protected open fun visitUniqueColumnConstraint(expr: UniqueColumnConstraintExpression): SqlExpression {
-        writeKeyword("UNIQUE")
+    protected open fun visitUniqueTableConstraint(expr: UniqueTableConstraintExpression): UniqueTableConstraintExpression {
+        writeKeyword("unique (")
+        var first = true
+        for(col in expr.across){
+            if(first) first = false
+            else write(", ")
+            write(col.name.quoted)
+        }
+        write(")")
         return expr
     }
-    protected open fun visitNotNullColumnConstraint(expr: NotNullColumnConstraintExpression): SqlExpression {
-        writeKeyword("NOT NULL")
+    protected open fun visitPrimaryKeyTableConstraint(expr: PrimaryKeyTableConstraintExpression): PrimaryKeyTableConstraintExpression {
+        writeKeyword("primary key (")
+        var first = true
+        for(col in expr.across){
+            if(first) first = false
+            else write(", ")
+            write(col.name.quoted)
+        }
+        write(")")
         return expr
     }
-    protected open fun visitDefaultColumnConstraint(expr: DefaultColumnConstraintExpression<*>): SqlExpression {
-        writeKeyword("DEFAULT ")
-        visitScalar(expr.value)
-        return expr
-    }
-    protected open fun visitAutoIncrementColumnConstraint(expr: AutoIncrementColumnConstraintExpression<*>): SqlExpression = TODO()
 
     protected open fun visitTableReference(expr: TableReferenceExpression): SqlExpression {
         return visitTable(
@@ -176,5 +260,25 @@ public abstract class SqlSchemaFormatter(
                 extraProperties = expr.extraProperties
             )
         )
+    }
+
+    protected open fun <T: Any> visitAlterTableSetDefault(expr: AlterTableSetDefaultExpression<T>): SqlExpression {
+        // TODO: This is unique across every database, H2 and MS Access use this though - SQLite has zero support
+        writeKeyword("alter table ")
+        visitTableReference(expr.table)
+        writeKeyword(" alter column ")
+        write(expr.column.name.quoted)
+        writeKeyword(" set default ")
+        visitScalar(expr.default)
+        return expr
+    }
+    protected open fun visitAlterTableDropDefault(expr: AlterTableDropDefaultExpression): AlterTableDropDefaultExpression {
+        // TODO: Closer to universal, only mysql has this problem - SQLite has zero support
+        writeKeyword("alter table ")
+        visitTableReference(expr.table)
+        writeKeyword(" alter column ")
+        write(expr.column.name.quoted)
+        writeKeyword(" drop default")
+        return expr
     }
 }
